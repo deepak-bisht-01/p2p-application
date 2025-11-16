@@ -352,7 +352,7 @@ class P2PService:
     
     def send_file(self, recipient_id: str, file_data: bytes, filename: str, 
                   mime_type: str = "application/octet-stream") -> bool:
-        """Send a file to a peer"""
+        """Send a file to a specific peer"""
         import uuid
         
         # Generate file ID
@@ -409,6 +409,71 @@ class P2PService:
             return True
         except Exception as e:
             logger.error(f"Error sending file: {e}", exc_info=True)
+            return False
+    
+    def broadcast_file(self, file_data: bytes, filename: str, 
+                       mime_type: str = "application/octet-stream") -> bool:
+        """Broadcast a file to all connected peers"""
+        import uuid
+        
+        # Generate file ID
+        file_id = FileManager.generate_file_id(filename, self.identity.peer_id)
+        
+        # Get all connected peers
+        connected_peers = self.connection_manager.get_active_connections()
+        if not connected_peers:
+            logger.warning("No connected peers to broadcast file to")
+            return False
+        
+        # Send file transfer request to all peers
+        request = MessageProtocol.create_file_transfer_request(
+            self.identity.peer_id,
+            None,  # None means broadcast
+            file_id,
+            filename,
+            len(file_data),
+            mime_type
+        )
+        
+        # Broadcast the request
+        self.connection_manager.broadcast_message(request)
+        
+        # Split file into chunks (32KB chunks to avoid message size issues)
+        chunk_size = 32 * 1024
+        total_chunks = (len(file_data) + chunk_size - 1) // chunk_size
+        
+        try:
+            for i in range(total_chunks):
+                start = i * chunk_size
+                end = min(start + chunk_size, len(file_data))
+                chunk = file_data[start:end]
+                chunk_b64 = base64.b64encode(chunk).decode('utf-8')
+                is_last = (i == total_chunks - 1)
+                
+                chunk_msg = MessageProtocol.create_file_transfer_chunk(
+                    self.identity.peer_id,
+                    None,  # None means broadcast
+                    file_id,
+                    i,
+                    chunk_b64,
+                    is_last
+                )
+                
+                # Broadcast each chunk
+                self.connection_manager.broadcast_message(chunk_msg)
+            
+            # Send completion message to all peers
+            complete_msg = MessageProtocol.create_file_transfer_complete(
+                self.identity.peer_id,
+                None,  # None means broadcast
+                file_id
+            )
+            self.connection_manager.broadcast_message(complete_msg)
+            
+            logger.info(f"File {filename} broadcasted to {len(connected_peers)} peers")
+            return True
+        except Exception as e:
+            logger.error(f"Error broadcasting file: {e}", exc_info=True)
             return False
     
     def list_files(self, limit: int = 100) -> List[Dict]:

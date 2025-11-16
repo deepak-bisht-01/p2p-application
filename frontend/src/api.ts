@@ -63,10 +63,13 @@ export async function uploadFile(file: File): Promise<{ file_id: string; file_in
   return handleResponse<{ file_id: string; file_info: FileInfo }>(response);
 }
 
-export async function sendFile(recipientId: string, file: File): Promise<void> {
+export async function sendFile(recipientId: string | undefined, file: File, broadcast: boolean = false): Promise<void> {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("recipient_id", recipientId);
+  if (recipientId && !broadcast) {
+    formData.append("recipient_id", recipientId);
+  }
+  formData.append("broadcast", broadcast.toString());
   
   const response = await fetch(`${API_BASE}/api/files/send-direct`, {
     method: "POST",

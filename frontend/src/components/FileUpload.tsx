@@ -11,6 +11,7 @@ export function FileUpload({ selectedPeer, isBusy, onFileSent }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [broadcast, setBroadcast] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -22,14 +23,14 @@ export function FileUpload({ selectedPeer, isBusy, onFileSent }: Props) {
       return;
     }
 
-    if (!selectedPeer) {
-      setError("Please select a peer to send the file to.");
+    if (!broadcast && !selectedPeer) {
+      setError("Please select a peer or enable broadcast.");
       return;
     }
 
     setIsSending(true);
     try {
-      await sendFile(selectedPeer, file);
+      await sendFile(selectedPeer || undefined, file, broadcast);
       setFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -70,18 +71,26 @@ export function FileUpload({ selectedPeer, isBusy, onFileSent }: Props) {
             </div>
           )}
         </div>
-        {!selectedPeer ? (
-          <p className="form__hint" style={{ color: "#999", fontSize: "0.9rem" }}>
-            Select a peer from the list to send a file
-          </p>
-        ) : null}
+        <div className="form__group form__group--inline">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={broadcast}
+              onChange={(event) => setBroadcast(event.target.checked)}
+            />
+            Broadcast to all peers
+          </label>
+          {!broadcast && selectedPeer ? (
+            <span className="muted monospace">Selected peer: {selectedPeer}</span>
+          ) : null}
+        </div>
         {error ? <p className="form__error">{error}</p> : null}
         <button
           className="btn btn--primary"
           type="submit"
-          disabled={isBusy || isSending || !file || !selectedPeer}
+          disabled={isBusy || isSending || !file || (!broadcast && !selectedPeer)}
         >
-          {isSending ? "Sending…" : "Send File"}
+          {isSending ? "Sending…" : broadcast ? "Broadcast File" : "Send File"}
         </button>
       </form>
     </section>

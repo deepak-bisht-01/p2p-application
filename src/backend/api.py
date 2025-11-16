@@ -20,7 +20,7 @@ class MessageRequest(BaseModel):
 
 
 class FileSendRequest(BaseModel):
-    recipient_id: str
+    recipient_id: Optional[str] = None  # None means broadcast
     file_id: str
 
 
@@ -102,7 +102,7 @@ async def upload_file(file: UploadFile = File(...)):
 
 @app.post("/api/files/send")
 async def send_file(request: FileSendRequest):
-    """Send a file to a peer"""
+    """Send a file to a peer or broadcast to all peers (if recipient_id is None)"""
     file_info = p2p_service.get_file_info(request.file_id)
     if not file_info:
         raise HTTPException(status_code=404, detail="File not found")
@@ -111,12 +111,19 @@ async def send_file(request: FileSendRequest):
     if not file_data:
         raise HTTPException(status_code=404, detail="File data not found")
     
-    success = p2p_service.send_file(
-        request.recipient_id,
-        file_data,
-        file_info["filename"],
-        file_info.get("mime_type", "application/octet-stream")
-    )
+    if request.recipient_id:
+        success = p2p_service.send_file(
+            request.recipient_id,
+            file_data,
+            file_info["filename"],
+            file_info.get("mime_type", "application/octet-stream")
+        )
+    else:
+        success = p2p_service.broadcast_file(
+            file_data,
+            file_info["filename"],
+            file_info.get("mime_type", "application/octet-stream")
+        )
     
     if not success:
         raise HTTPException(status_code=400, detail="Failed to send file")
@@ -126,21 +133,29 @@ async def send_file(request: FileSendRequest):
 
 @app.post("/api/files/send-direct")
 async def send_file_direct(
-    recipient_id: str = Form(...),
+    recipient_id: str = Form(None),
+    broadcast: str = Form("false"),
     file: UploadFile = File(...)
 ):
-    """Upload and send a file directly to a peer"""
+    """Upload and send a file directly to a peer or broadcast to all peers"""
     try:
         file_data = await file.read()
         filename = file.filename or "unnamed"
         mime_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
         
-        success = p2p_service.send_file(recipient_id, file_data, filename, mime_type)
+        is_broadcast = broadcast.lower() == "true"
+        
+        if is_broadcast:
+            success = p2p_service.broadcast_file(file_data, filename, mime_type)
+        else:
+            if not recipient_id:
+                raise HTTPException(status_code=400, detail="recipient_id is required when not broadcasting")
+            success = p2p_service.send_file(recipient_id, file_data, filename, mime_type)
         
         if not success:
             raise HTTPException(status_code=400, detail="Failed to send file")
         
-        return {"status": "sent", "filename": filename}
+        return {"status": "sent", "filename": filename, "broadcast": is_broadcast}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
