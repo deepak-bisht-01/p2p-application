@@ -33,7 +33,7 @@ class P2PService:
             port = int(os.getenv("PEER_PORT", "5000"))
         
         self.port = port
-        self.identity = PeerIdentity(identity_file)
+        self.identity = PeerIdentity(identity_file)  # type: ignore
         self.validator = MessageValidator()
         self.peer_registry = PeerRegistry()
         self.message_queue = MessageQueue()
@@ -46,7 +46,7 @@ class P2PService:
             message_handler=self._handle_incoming_message,
             peer_registry=self.peer_registry
         )
-        self.peer_node = PeerNode(port=port, peer_id=self.identity.peer_id)
+        self.peer_node = PeerNode(port=port, peer_id=self.identity.peer_id)  # type: ignore
         self.peer_node.connection_manager = self.connection_manager
 
         self._start_components()
@@ -181,11 +181,17 @@ class P2PService:
             logger.warning("Invalid file transfer request: missing file_id or filename")
             return
         
+        # Check if this message is for us (either direct or broadcast)
+        if recipient_id is not None and recipient_id != self.identity.peer_id:
+            logger.debug(f"Ignoring file transfer request for {recipient_id}")
+            return
+        
         # Register the file
         self.file_manager.register_file(
             file_id, filename, file_size, mime_type, sender_id, recipient_id
         )
-        logger.info(f"Receiving file {filename} ({file_id}) from {sender_id}")
+        transfer_type = "broadcast" if recipient_id is None else "direct"
+        logger.info(f"Receiving file {filename} ({file_id}) from {sender_id} ({transfer_type})")
     
     def _handle_file_transfer_chunk(self, message: Dict):
         """Handle incoming file transfer chunk"""
@@ -194,14 +200,21 @@ class P2PService:
         chunk_index = content.get("chunk_index")
         chunk_data_b64 = content.get("chunk_data")
         is_last = content.get("is_last", False)
+        recipient_id = message.get("recipient_id")
         
         if not file_id or chunk_index is None or not chunk_data_b64:
             logger.warning("Invalid file transfer chunk: missing required fields")
             return
         
+        # Check if this message is for us (either direct or broadcast)
+        if recipient_id is not None and recipient_id != self.identity.peer_id:
+            logger.debug(f"Ignoring file chunk for {recipient_id}")
+            return
+        
         try:
             chunk_data = base64.b64decode(chunk_data_b64)
             self.file_manager.add_chunk(file_id, chunk_index, chunk_data, is_last)
+            logger.debug(f"Received chunk {chunk_index} for file {file_id}")
         except Exception as e:
             logger.error(f"Failed to process file chunk {chunk_index} for {file_id}: {e}")
     
@@ -209,28 +222,36 @@ class P2PService:
         """Handle file transfer complete notification"""
         content = message.get("content", {})
         file_id = content.get("file_id")
+        recipient_id = message.get("recipient_id")
         
         if not file_id:
+            return
+        
+        # Check if this message is for us (either direct or broadcast)
+        if recipient_id is not None and recipient_id != self.identity.peer_id:
+            logger.debug(f"Ignoring file completion for {recipient_id}")
             return
         
         # Complete the file
         success = self.file_manager.complete_file(file_id)
         
-        # Send acknowledgment
-        ack = MessageProtocol.create_file_transfer_ack(
-            self.identity.peer_id,
-            message["sender_id"],
-            file_id,
-            success
-        )
-        self.connection_manager.send_message(
-            message["sender_id"],
-            ack
-        )
+        # Send acknowledgment only for direct transfers or if we are a recipient
+        if recipient_id is not None or success:
+            ack = MessageProtocol.create_file_transfer_ack(
+                self.identity.peer_id,
+                message["sender_id"],
+                file_id,
+                success
+            )
+            self.connection_manager.send_message(
+                message["sender_id"],
+                ack
+            )
         
         if success:
             file_info = self.file_manager.get_file_info(file_id)
-            logger.info(f"File transfer completed: {file_info.get('filename') if file_info else file_id}")
+            transfer_type = "broadcast" if recipient_id is None else "direct"
+            logger.info(f"File transfer completed ({transfer_type}): {file_info.get('filename') if file_info else file_id}")
         else:
             logger.warning(f"File transfer failed: {file_id}")
     
@@ -354,6 +375,7 @@ class P2PService:
                   mime_type: str = "application/octet-stream") -> bool:
         """Send a file to a specific peer"""
         import uuid
+        import time
         
         # Generate file ID
         file_id = FileManager.generate_file_id(filename, self.identity.peer_id)
@@ -396,6 +418,10 @@ class P2PService:
                 if not self.connection_manager.send_message(recipient_id, chunk_msg):
                     logger.error(f"Failed to send chunk {i} to {recipient_id}")
                     return False
+                
+                # Small delay between chunks to prevent overwhelming the receiver
+                if i < total_chunks - 1:
+                    time.sleep(0.01)  # 10ms delay
             
             # Send completion message
             complete_msg = MessageProtocol.create_file_transfer_complete(
@@ -405,7 +431,7 @@ class P2PService:
             )
             self.connection_manager.send_message(recipient_id, complete_msg)
             
-            logger.info(f"File {filename} sent to {recipient_id}")
+            logger.info(f"File {filename} ({total_chunks} chunks) sent to {recipient_id}")
             return True
         except Exception as e:
             logger.error(f"Error sending file: {e}", exc_info=True)
@@ -415,6 +441,7 @@ class P2PService:
                        mime_type: str = "application/octet-stream") -> bool:
         """Broadcast a file to all connected peers"""
         import uuid
+        import time
         
         # Generate file ID
         file_id = FileManager.generate_file_id(filename, self.identity.peer_id)
@@ -423,6 +450,12 @@ class P2PService:
         connected_peers = self.connection_manager.get_active_connections()
         if not connected_peers:
             logger.warning("No connected peers to broadcast file to")
+            return False
+        
+        # Filter out self from the list
+        connected_peers = [p for p in connected_peers if p != self.identity.peer_id]
+        if not connected_peers:
+            logger.warning("No other peers to broadcast file to (only self connected)")
             return False
         
         # Send file transfer request to all peers
@@ -436,7 +469,7 @@ class P2PService:
         )
         
         # Broadcast the request
-        self.connection_manager.broadcast_message(request)
+        self.connection_manager.broadcast_message(request, exclude_peer=self.identity.peer_id)
         
         # Split file into chunks (32KB chunks to avoid message size issues)
         chunk_size = 32 * 1024
@@ -460,7 +493,11 @@ class P2PService:
                 )
                 
                 # Broadcast each chunk
-                self.connection_manager.broadcast_message(chunk_msg)
+                self.connection_manager.broadcast_message(chunk_msg, exclude_peer=self.identity.peer_id)
+                
+                # Small delay between chunks to prevent overwhelming receivers
+                if i < total_chunks - 1:
+                    time.sleep(0.01)  # 10ms delay
             
             # Send completion message to all peers
             complete_msg = MessageProtocol.create_file_transfer_complete(
@@ -468,9 +505,9 @@ class P2PService:
                 None,  # None means broadcast
                 file_id
             )
-            self.connection_manager.broadcast_message(complete_msg)
+            self.connection_manager.broadcast_message(complete_msg, exclude_peer=self.identity.peer_id)
             
-            logger.info(f"File {filename} broadcasted to {len(connected_peers)} peers")
+            logger.info(f"File {filename} ({total_chunks} chunks) broadcasted to {len(connected_peers)} peers")
             return True
         except Exception as e:
             logger.error(f"Error broadcasting file: {e}", exc_info=True)

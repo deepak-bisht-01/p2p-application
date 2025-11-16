@@ -2,22 +2,22 @@ import uuid
 import hashlib
 import json
 import os
-from typing import Dict
+from typing import Dict, Optional, Any
 from datetime import datetime
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 
 class PeerIdentity:
-    def __init__(self, identity_file: str = None):
+    def __init__(self, identity_file: Optional[str] = None):
         """
         Initializes the PeerIdentity object.
         Loads identity from file or creates a new one if it doesn't exist.
         """
         self.identity_file = identity_file or "peer_identity.json"
-        self.peer_id = None
-        self.public_key = None
-        self.private_key = None
+        self.peer_id: str = ""
+        self.public_key: Any = None
+        self.private_key: Any = None
         self.peer_info: Dict = {}
 
         if os.path.exists(self.identity_file):
@@ -59,6 +59,9 @@ class PeerIdentity:
         """
         Saves identity (peer ID and RSA key pair) to a file.
         """
+        if not self.private_key or not self.public_key:
+            raise RuntimeError("Cannot save identity: keys not initialized")
+            
         private_pem = self.private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
@@ -106,6 +109,9 @@ class PeerIdentity:
         """
         Returns public key in PEM string format.
         """
+        if not self.public_key:
+            raise RuntimeError("Public key not initialized")
+            
         return self.public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo

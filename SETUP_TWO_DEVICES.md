@@ -132,3 +132,4 @@ Now both devices can send files to each other!
 - Verify the file transfer completed (check status in file list)
 - Refresh the file list
 
+

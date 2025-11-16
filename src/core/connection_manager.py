@@ -1,12 +1,12 @@
 import socket
 import threading
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 import logging
 from collections import defaultdict
 from src.backend.models import Peer
  # to avoid circular import
 class Connection:
-    def __init__(self, socket: socket.socket, address: Tuple[str, int], peer_id: str = None):
+    def __init__(self, socket: socket.socket, address: Tuple[str, int], peer_id: Optional[str] = None):
         self.socket = socket
         self.address = address
         self.peer_id = peer_id
@@ -21,7 +21,7 @@ class ConnectionManager:
         self.message_handler = message_handler
         self.peer_registry = peer_registry   # ✅ store registry if provided
         self.logger = logging.getLogger('ConnectionManager')
-    def add_connection(self, sock: socket.socket, address: Tuple[str, int], peer_id: str = None):
+    def add_connection(self, sock: socket.socket, address: Tuple[str, int], peer_id: Optional[str] = None):
         """Add a new connection"""
         with self.lock:
             if not peer_id:
@@ -62,7 +62,7 @@ class ConnectionManager:
                 # Try to extract complete messages
                 while b'\n' in buffer:
                     line, buffer = buffer.split(b'\n', 1)
-                    if self.message_handler:
+                    if self.message_handler and conn.peer_id:
                         self.message_handler(conn.peer_id, line.decode('utf-8'))
                         
             except Exception as e:
@@ -70,7 +70,8 @@ class ConnectionManager:
                 break
         
         # Clean up connection
-        self.remove_connection(conn.peer_id)
+        if conn.peer_id:
+            self.remove_connection(conn.peer_id)
     
     def send_message(self, peer_id: str, message: bytes) -> bool:
         """Send message to a specific peer"""
@@ -86,12 +87,15 @@ class ConnectionManager:
                     self.remove_connection(peer_id)
         return False
     
-    def broadcast_message(self, message: bytes, exclude_peer: str = None):
+    def broadcast_message(self, message: bytes, exclude_peer: Optional[str] = None):
         """Broadcast message to all connected peers"""
         with self.lock:
+            peer_count = 0
             for peer_id, conn in list(self.connections.items()):
                 if peer_id != exclude_peer:
-                    self.send_message(peer_id, message)
+                    if self.send_message(peer_id, message):
+                        peer_count += 1
+            self.logger.debug(f"Broadcasted message to {peer_count} peers")
     
     def remove_connection(self, peer_id: str):
         """Remove a connection"""

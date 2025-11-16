@@ -20,8 +20,8 @@ class MessageProtocol:
     
     @staticmethod
     def create_message(msg_type: MessageType, sender_id: str, 
-                      recipient_id: str = None, content: Any = None, 
-                      message_id: str = None) -> Dict[str, Any]:
+                      recipient_id: Optional[str] = None, content: Any = None, 
+                      message_id: Optional[str] = None) -> Dict[str, Any]:
         """Create a message following the protocol"""
         import uuid
         
@@ -70,7 +70,7 @@ class MessageProtocol:
         return MessageProtocol.encode_message(message)
     
     @staticmethod
-    def create_text_message(sender_id: str, recipient_id: str, text: str) -> bytes:
+    def create_text_message(sender_id: str, recipient_id: Optional[str], text: str) -> bytes:
         """Create text message"""
         message = MessageProtocol.create_message(
             MessageType.TEXT,
@@ -81,7 +81,7 @@ class MessageProtocol:
         return MessageProtocol.encode_message(message)
     
     @staticmethod
-    def create_file_transfer_request(sender_id: str, recipient_id: str, 
+    def create_file_transfer_request(sender_id: str, recipient_id: Optional[str], 
                                      file_id: str, filename: str, 
                                      file_size: int, mime_type: str) -> bytes:
         """Create file transfer request message"""
@@ -99,7 +99,7 @@ class MessageProtocol:
         return MessageProtocol.encode_message(message)
     
     @staticmethod
-    def create_file_transfer_chunk(sender_id: str, recipient_id: str,
+    def create_file_transfer_chunk(sender_id: str, recipient_id: Optional[str],
                                    file_id: str, chunk_index: int,
                                    chunk_data: str, is_last: bool) -> bytes:
         """Create file transfer chunk message (chunk_data should be base64 encoded)"""
@@ -117,7 +117,7 @@ class MessageProtocol:
         return MessageProtocol.encode_message(message)
     
     @staticmethod
-    def create_file_transfer_complete(sender_id: str, recipient_id: str,
+    def create_file_transfer_complete(sender_id: str, recipient_id: Optional[str],
                                      file_id: str) -> bytes:
         """Create file transfer complete message"""
         message = MessageProtocol.create_message(

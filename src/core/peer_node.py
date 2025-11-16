@@ -9,11 +9,11 @@ from src.core.connection_manager import ConnectionManager
 from src.backend.peer_registry import PeerRegistry
 
 class PeerNode:
-    def __init__(self, host: str = '0.0.0.0', port: int = 5000, peer_id: str = None):
+    def __init__(self, host: str = '0.0.0.0', port: int = 5000, peer_id: Optional[str] = None):
         self.host = host
         self.port = port
         self.peer_id = peer_id
-        self.server_socket = None
+        self.server_socket: Optional[socket.socket] = None
         self.is_running = False
         self.logger = logging.getLogger(f'PeerNode-{port}')
 
@@ -51,6 +51,9 @@ class PeerNode:
         """Accept incoming connections"""
         while self.is_running:
             try:
+                if not self.server_socket:
+                    break
+                    
                 client_socket, address = self.server_socket.accept()
                 self.logger.info(f"New connection from {address}")
                 
@@ -82,7 +85,10 @@ class PeerNode:
         """Stop the peer node"""
         self.is_running = False
         if self.server_socket:
-            self.server_socket.close()
+            try:
+                self.server_socket.close()
+            except Exception as e:
+                self.logger.error(f"Error closing server socket: {e}")
 
     # placeholder handler
     def _handle_message(self, peer_id: str, message: str):
