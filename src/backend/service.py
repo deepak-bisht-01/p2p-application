@@ -13,8 +13,10 @@ from src.core.message_protocol import MessageProtocol, MessageType
 from src.backend.peer_registry import PeerRegistry
 from src.backend.message_queue import MessageQueue
 from src.backend.models import Peer, Message
+from src.backend.file_manager import FileManager
 from src.security.peer_identity import PeerIdentity
 from src.security.message_validator import MessageValidator
+import base64
 
 logger = logging.getLogger("P2PService")
 
@@ -35,6 +37,7 @@ class P2PService:
         self.validator = MessageValidator()
         self.peer_registry = PeerRegistry()
         self.message_queue = MessageQueue()
+        self.file_manager = FileManager()
         self.messages: Deque[Dict] = deque(maxlen=1000)
         self.lock = threading.RLock()
 
@@ -119,6 +122,14 @@ class P2PService:
                 self._handle_text_message(message_dict)
             elif msg_type == MessageType.PING.value:
                 self._handle_ping(message_dict)
+            elif msg_type == MessageType.FILE_TRANSFER_REQUEST.value:
+                self._handle_file_transfer_request(message_dict)
+            elif msg_type == MessageType.FILE_TRANSFER_CHUNK.value:
+                self._handle_file_transfer_chunk(message_dict)
+            elif msg_type == MessageType.FILE_TRANSFER_COMPLETE.value:
+                self._handle_file_transfer_complete(message_dict)
+            elif msg_type == MessageType.FILE_TRANSFER_ACK.value:
+                self._handle_file_transfer_ack(message_dict)
 
             self._record_message({
                 "direction": "incoming",
@@ -155,6 +166,84 @@ class P2PService:
             message["sender_id"],
             MessageProtocol.encode_message(pong)
         )
+    
+    def _handle_file_transfer_request(self, message: Dict):
+        """Handle incoming file transfer request"""
+        content = message.get("content", {})
+        file_id = content.get("file_id")
+        filename = content.get("filename")
+        file_size = content.get("file_size")
+        mime_type = content.get("mime_type", "application/octet-stream")
+        sender_id = message["sender_id"]
+        recipient_id = message.get("recipient_id")
+        
+        if not file_id or not filename:
+            logger.warning("Invalid file transfer request: missing file_id or filename")
+            return
+        
+        # Register the file
+        self.file_manager.register_file(
+            file_id, filename, file_size, mime_type, sender_id, recipient_id
+        )
+        logger.info(f"Receiving file {filename} ({file_id}) from {sender_id}")
+    
+    def _handle_file_transfer_chunk(self, message: Dict):
+        """Handle incoming file transfer chunk"""
+        content = message.get("content", {})
+        file_id = content.get("file_id")
+        chunk_index = content.get("chunk_index")
+        chunk_data_b64 = content.get("chunk_data")
+        is_last = content.get("is_last", False)
+        
+        if not file_id or chunk_index is None or not chunk_data_b64:
+            logger.warning("Invalid file transfer chunk: missing required fields")
+            return
+        
+        try:
+            chunk_data = base64.b64decode(chunk_data_b64)
+            self.file_manager.add_chunk(file_id, chunk_index, chunk_data, is_last)
+        except Exception as e:
+            logger.error(f"Failed to process file chunk {chunk_index} for {file_id}: {e}")
+    
+    def _handle_file_transfer_complete(self, message: Dict):
+        """Handle file transfer complete notification"""
+        content = message.get("content", {})
+        file_id = content.get("file_id")
+        
+        if not file_id:
+            return
+        
+        # Complete the file
+        success = self.file_manager.complete_file(file_id)
+        
+        # Send acknowledgment
+        ack = MessageProtocol.create_file_transfer_ack(
+            self.identity.peer_id,
+            message["sender_id"],
+            file_id,
+            success
+        )
+        self.connection_manager.send_message(
+            message["sender_id"],
+            ack
+        )
+        
+        if success:
+            file_info = self.file_manager.get_file_info(file_id)
+            logger.info(f"File transfer completed: {file_info.get('filename') if file_info else file_id}")
+        else:
+            logger.warning(f"File transfer failed: {file_id}")
+    
+    def _handle_file_transfer_ack(self, message: Dict):
+        """Handle file transfer acknowledgment"""
+        content = message.get("content", {})
+        file_id = content.get("file_id")
+        success = content.get("success", False)
+        
+        if success:
+            logger.info(f"File transfer acknowledged: {file_id}")
+        else:
+            logger.warning(f"File transfer rejected: {file_id}")
 
     def _send_message_handler(self, message: Message):
         try:
@@ -260,6 +349,79 @@ class P2PService:
     def get_messages(self, limit: int = 100) -> List[Dict]:
         with self.lock:
             return list(list(self.messages)[0:limit])
+    
+    def send_file(self, recipient_id: str, file_data: bytes, filename: str, 
+                  mime_type: str = "application/octet-stream") -> bool:
+        """Send a file to a peer"""
+        import uuid
+        
+        # Generate file ID
+        file_id = FileManager.generate_file_id(filename, self.identity.peer_id)
+        
+        # Send file transfer request
+        request = MessageProtocol.create_file_transfer_request(
+            self.identity.peer_id,
+            recipient_id,
+            file_id,
+            filename,
+            len(file_data),
+            mime_type
+        )
+        
+        if not self.connection_manager.send_message(recipient_id, request):
+            logger.error(f"Failed to send file transfer request to {recipient_id}")
+            return False
+        
+        # Split file into chunks (32KB chunks to avoid message size issues)
+        chunk_size = 32 * 1024
+        total_chunks = (len(file_data) + chunk_size - 1) // chunk_size
+        
+        try:
+            for i in range(total_chunks):
+                start = i * chunk_size
+                end = min(start + chunk_size, len(file_data))
+                chunk = file_data[start:end]
+                chunk_b64 = base64.b64encode(chunk).decode('utf-8')
+                is_last = (i == total_chunks - 1)
+                
+                chunk_msg = MessageProtocol.create_file_transfer_chunk(
+                    self.identity.peer_id,
+                    recipient_id,
+                    file_id,
+                    i,
+                    chunk_b64,
+                    is_last
+                )
+                
+                if not self.connection_manager.send_message(recipient_id, chunk_msg):
+                    logger.error(f"Failed to send chunk {i} to {recipient_id}")
+                    return False
+            
+            # Send completion message
+            complete_msg = MessageProtocol.create_file_transfer_complete(
+                self.identity.peer_id,
+                recipient_id,
+                file_id
+            )
+            self.connection_manager.send_message(recipient_id, complete_msg)
+            
+            logger.info(f"File {filename} sent to {recipient_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error sending file: {e}", exc_info=True)
+            return False
+    
+    def list_files(self, limit: int = 100) -> List[Dict]:
+        """List all files"""
+        return self.file_manager.list_files(limit)
+    
+    def get_file(self, file_id: str) -> Optional[bytes]:
+        """Get file data"""
+        return self.file_manager.get_file(file_id)
+    
+    def get_file_info(self, file_id: str) -> Optional[Dict]:
+        """Get file metadata"""
+        return self.file_manager.get_file_info(file_id)
 
 
 # Singleton service instance used by the API layer

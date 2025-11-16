@@ -1,4 +1,4 @@
-import { MessageLogEntry, Peer, StatusSummary } from "./types";
+import { MessageLogEntry, Peer, StatusSummary, FileInfo } from "./types";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:8000";
@@ -44,5 +44,56 @@ export async function sendMessage(text: string, recipientId?: string): Promise<v
     body: JSON.stringify({ text, recipient_id: recipientId })
   });
   await handleResponse(response);
+}
+
+export async function fetchFiles(limit = 100): Promise<FileInfo[]> {
+  const response = await fetch(`${API_BASE}/api/files?limit=${limit}`);
+  const data = await handleResponse<{ files: FileInfo[] }>(response);
+  return data.files;
+}
+
+export async function uploadFile(file: File): Promise<{ file_id: string; file_info: FileInfo }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  const response = await fetch(`${API_BASE}/api/files/upload`, {
+    method: "POST",
+    body: formData
+  });
+  return handleResponse<{ file_id: string; file_info: FileInfo }>(response);
+}
+
+export async function sendFile(recipientId: string, file: File): Promise<void> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("recipient_id", recipientId);
+  
+  const response = await fetch(`${API_BASE}/api/files/send-direct`, {
+    method: "POST",
+    body: formData
+  });
+  await handleResponse(response);
+}
+
+export async function sendFileById(recipientId: string, fileId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/files/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recipient_id: recipientId, file_id: fileId })
+  });
+  await handleResponse(response);
+}
+
+export function getFileDownloadUrl(fileId: string): string {
+  return `${API_BASE}/api/files/${fileId}`;
+}
+
+export function getFilePreviewUrl(fileId: string): string {
+  return `${API_BASE}/api/files/${fileId}/preview`;
+}
+
+export async function getFileInfo(fileId: string): Promise<FileInfo> {
+  const response = await fetch(`${API_BASE}/api/files/${fileId}/info`);
+  return handleResponse<FileInfo>(response);
 }
 

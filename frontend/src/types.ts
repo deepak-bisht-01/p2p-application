@@ -24,3 +24,16 @@ export interface StatusSummary {
   active_connections: string[];
 }
 
+export interface FileInfo {
+  file_id: string;
+  filename: string;
+  file_size: number;
+  mime_type: string;
+  sender_id: string;
+  recipient_id?: string | null;
+  status: string;
+  created_at: string;
+  completed_at?: string | null;
+  file_path?: string;
+}
+

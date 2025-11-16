@@ -4,6 +4,7 @@ import {
   fetchMessages,
   fetchPeers,
   fetchStatus,
+  fetchFiles,
   sendMessage
 } from "./api";
 import "./App.css";
@@ -12,7 +13,9 @@ import { PeerList } from "./components/PeerList";
 import { ConnectPeerForm } from "./components/ConnectPeerForm";
 import { MessageComposer } from "./components/MessageComposer";
 import { MessagePanel } from "./components/MessagePanel";
-import { MessageLogEntry, Peer, StatusSummary } from "./types";
+import { FileUpload } from "./components/FileUpload";
+import { FileList } from "./components/FileList";
+import { MessageLogEntry, Peer, StatusSummary, FileInfo } from "./types";
 
 const POLL_INTERVAL = 5_000;
 
@@ -71,6 +74,13 @@ export default function App() {
     error: messagesError
   } = usePolling<MessageLogEntry[]>(() => fetchMessages(200), []);
 
+  const {
+    data: files,
+    loading: filesLoading,
+    refresh: refreshFiles,
+    error: filesError
+  } = usePolling<FileInfo[]>(() => fetchFiles(100), []);
+
   const handleConnect = useCallback(
     async (host: string, port: number) => {
       setIsConnecting(true);
@@ -96,6 +106,10 @@ export default function App() {
     },
     [refreshMessages]
   );
+
+  const handleFileSent = useCallback(async () => {
+    await Promise.all([refreshFiles(), refreshMessages()]);
+  }, [refreshFiles, refreshMessages]);
 
   useEffect(() => {
     if (!peers || peers.length === 0) {
@@ -136,6 +150,11 @@ export default function App() {
           />
           <ConnectPeerForm onConnect={handleConnect} isBusy={isConnecting} />
           <MessageComposer onSend={handleSend} selectedPeer={selectedPeer} isBusy={isSending} />
+          <FileUpload
+            selectedPeer={selectedPeer}
+            isBusy={isSending || isConnecting}
+            onFileSent={handleFileSent}
+          />
         </div>
 
         <div className="app__column app__column--grow">
@@ -152,6 +171,12 @@ export default function App() {
             isLoading={messagesLoading}
             error={messagesError}
           />
+          <FileList
+            files={files ?? []}
+            isLoading={filesLoading}
+            error={filesError}
+            onRefresh={refreshFiles}
+          />
         </div>
       </main>
 
@@ -161,7 +186,7 @@ export default function App() {
           type="button"
           className="btn btn--ghost"
           onClick={() => {
-            void Promise.all([refreshStatus(), refreshPeers(), refreshMessages()]).catch(
+            void Promise.all([refreshStatus(), refreshPeers(), refreshMessages(), refreshFiles()]).catch(
               () => undefined
             );
           }}

@@ -10,6 +10,10 @@ class MessageType(Enum):
     PING = "ping"
     PONG = "pong"
     ERROR = "error"
+    FILE_TRANSFER_REQUEST = "file_transfer_request"
+    FILE_TRANSFER_CHUNK = "file_transfer_chunk"
+    FILE_TRANSFER_COMPLETE = "file_transfer_complete"
+    FILE_TRANSFER_ACK = "file_transfer_ack"
 
 class MessageProtocol:
     VERSION = "1.0"
@@ -73,5 +77,65 @@ class MessageProtocol:
             sender_id,
             recipient_id,
             content={"text": text}
+        )
+        return MessageProtocol.encode_message(message)
+    
+    @staticmethod
+    def create_file_transfer_request(sender_id: str, recipient_id: str, 
+                                     file_id: str, filename: str, 
+                                     file_size: int, mime_type: str) -> bytes:
+        """Create file transfer request message"""
+        message = MessageProtocol.create_message(
+            MessageType.FILE_TRANSFER_REQUEST,
+            sender_id,
+            recipient_id,
+            content={
+                "file_id": file_id,
+                "filename": filename,
+                "file_size": file_size,
+                "mime_type": mime_type
+            }
+        )
+        return MessageProtocol.encode_message(message)
+    
+    @staticmethod
+    def create_file_transfer_chunk(sender_id: str, recipient_id: str,
+                                   file_id: str, chunk_index: int,
+                                   chunk_data: str, is_last: bool) -> bytes:
+        """Create file transfer chunk message (chunk_data should be base64 encoded)"""
+        message = MessageProtocol.create_message(
+            MessageType.FILE_TRANSFER_CHUNK,
+            sender_id,
+            recipient_id,
+            content={
+                "file_id": file_id,
+                "chunk_index": chunk_index,
+                "chunk_data": chunk_data,
+                "is_last": is_last
+            }
+        )
+        return MessageProtocol.encode_message(message)
+    
+    @staticmethod
+    def create_file_transfer_complete(sender_id: str, recipient_id: str,
+                                     file_id: str) -> bytes:
+        """Create file transfer complete message"""
+        message = MessageProtocol.create_message(
+            MessageType.FILE_TRANSFER_COMPLETE,
+            sender_id,
+            recipient_id,
+            content={"file_id": file_id}
+        )
+        return MessageProtocol.encode_message(message)
+    
+    @staticmethod
+    def create_file_transfer_ack(sender_id: str, recipient_id: str,
+                                file_id: str, success: bool) -> bytes:
+        """Create file transfer acknowledgment message"""
+        message = MessageProtocol.create_message(
+            MessageType.FILE_TRANSFER_ACK,
+            sender_id,
+            recipient_id,
+            content={"file_id": file_id, "success": success}
         )
         return MessageProtocol.encode_message(message)
