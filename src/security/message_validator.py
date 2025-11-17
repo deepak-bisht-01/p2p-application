@@ -32,7 +32,11 @@ class MessageValidator:
             return False, "Invalid timestamp"
         
         # Check message type
-        valid_types = ["handshake", "text", "ack", "ping", "pong", "error"]
+        valid_types = [
+            "handshake", "text", "ack", "ping", "pong", "error",
+            "file_transfer_request", "file_transfer_chunk", 
+            "file_transfer_complete", "file_transfer_ack"
+        ]
         if message["type"] not in valid_types:
             return False, f"Invalid message type: {message['type']}"
         
