@@ -35,5 +35,7 @@ export interface FileInfo {
   created_at: string;
   completed_at?: string | null;
   file_path?: string;
+  chunks_received?: number;
+  total_chunks?: number;
 }
 

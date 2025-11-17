@@ -123,7 +123,7 @@ class P2PService:
             msg_type = message_dict["type"]
 
             if msg_type == MessageType.HANDSHAKE.value:
-                self._handle_handshake(message_dict)
+                self._handle_handshake(peer_id, message_dict)  # Pass peer_id to handshake handler
             elif msg_type == MessageType.TEXT.value:
                 self._handle_text_message(message_dict)
             elif msg_type == MessageType.PING.value:
@@ -150,8 +150,15 @@ class P2PService:
         except Exception as exc:
             logger.error("Error handling incoming message from %s: %s", peer_id, exc, exc_info=True)
 
-    def _handle_handshake(self, message: Dict):
+    def _handle_handshake(self, temp_peer_id: str, message: Dict):
+        """Handle handshake message and associate temp peer ID with real peer ID"""
         sender_id = message["sender_id"]
+        
+        # If we already have this peer connected with their real ID, don't respond again
+        if sender_id in self.connection_manager.get_active_connections():
+            logger.debug(f"Handshake from {sender_id[:16]}... already established, skipping response")
+            return
+        
         peer_info = message.get("content", {})
         peer = Peer(
             peer_id=sender_id,
@@ -160,8 +167,20 @@ class P2PService:
             public_key=peer_info.get("public_key")
         )
         self.peer_registry.register_peer(peer)
-        temp_id = f"{peer.address}:{peer.port}"
-        self.connection_manager.associate_temp_id_with_peer_id(temp_id, sender_id)
+        # Use the temp_peer_id from the connection, not constructed from message content
+        self.connection_manager.associate_temp_id_with_peer_id(temp_peer_id, sender_id)
+        logger.info(f"Handshake complete: {temp_peer_id} -> {sender_id[:16]}...")
+        
+        # Send handshake response back
+        response = MessageProtocol.create_handshake(
+            self.identity.peer_id,
+            {
+                "address": "localhost",
+                "port": self.port,
+                "public_key": self.identity.get_public_key_string()
+            }
+        )
+        self.connection_manager.send_message(sender_id, response)
 
     def _handle_text_message(self, message: Dict):
         # For now, we only record the message. Additional logic could go here.

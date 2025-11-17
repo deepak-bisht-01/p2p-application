@@ -42,6 +42,61 @@ export function FileList({ files, isLoading, error, onRefresh }: Props) {
     }
   }
 
+  function getStatusBadgeColor(status: string): string {
+    switch (status) {
+      case 'completed':
+        return '#4caf50';
+      case 'receiving':
+        return '#2196f3';
+      case 'failed':
+        return '#f44336';
+      default:
+        return '#9e9e9e';
+    }
+  }
+
+  function renderProgressBar(file: FileInfo) {
+    if (file.status !== 'receiving' || !file.total_chunks) {
+      return null;
+    }
+
+    const chunksReceived = file.chunks_received || 0;
+    const totalChunks = file.total_chunks || 1;
+    const progress = (chunksReceived / totalChunks) * 100;
+
+    return (
+      <div style={{ marginTop: "0.75rem" }}>
+        <div style={{ 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: "center", 
+          marginBottom: "0.25rem",
+          fontSize: "0.85rem"
+        }}>
+          <span style={{ color: "#2196f3", fontWeight: "500" }}>
+            Receiving... {chunksReceived}/{totalChunks} chunks
+          </span>
+          <span style={{ color: "#666" }}>{progress.toFixed(1)}%</span>
+        </div>
+        <div style={{
+          width: "100%",
+          height: "8px",
+          backgroundColor: "#e0e0e0",
+          borderRadius: "4px",
+          overflow: "hidden"
+        }}>
+          <div style={{
+            width: `${progress}%`,
+            height: "100%",
+            backgroundColor: "#2196f3",
+            transition: "width 0.3s ease",
+            borderRadius: "4px"
+          }} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <section className="card card--files">
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -67,7 +122,16 @@ export function FileList({ files, isLoading, error, onRefresh }: Props) {
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
                       <strong>{file.filename}</strong>
-                      <span className="badge" style={{ fontSize: "0.75rem" }}>
+                      <span 
+                        className="badge" 
+                        style={{ 
+                          fontSize: "0.75rem",
+                          backgroundColor: getStatusBadgeColor(file.status),
+                          color: "white",
+                          padding: "2px 8px",
+                          borderRadius: "12px"
+                        }}
+                      >
                         {file.status}
                       </span>
                     </div>
@@ -77,6 +141,7 @@ export function FileList({ files, isLoading, error, onRefresh }: Props) {
                     <div style={{ fontSize: "0.8rem", color: "#999" }}>
                       From: {file.sender_id.substring(0, 8)}... • {formatDate(file.created_at)}
                     </div>
+                    {renderProgressBar(file)}
                   </div>
                   <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
                     {isPreviewable(file.mime_type) && file.status === "completed" && (

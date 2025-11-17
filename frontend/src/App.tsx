@@ -18,8 +18,9 @@ import { FileList } from "./components/FileList";
 import { MessageLogEntry, Peer, StatusSummary, FileInfo } from "./types";
 
 const POLL_INTERVAL = 5_000;
+const FILE_POLL_INTERVAL = 2_000; // Faster polling for file transfers
 
-function usePolling<T>(callback: () => Promise<T>, deps: unknown[] = []) {
+function usePolling<T>(callback: () => Promise<T>, deps: unknown[] = [], interval: number = POLL_INTERVAL) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,9 +42,9 @@ function usePolling<T>(callback: () => Promise<T>, deps: unknown[] = []) {
     void fetchData();
     const timer = window.setInterval(() => {
       void fetchData();
-    }, POLL_INTERVAL);
+    }, interval);
     return () => window.clearInterval(timer);
-  }, [fetchData]);
+  }, [fetchData, interval]);
 
   return { data, loading, refresh: fetchData, error };
 }
@@ -79,7 +80,7 @@ export default function App() {
     loading: filesLoading,
     refresh: refreshFiles,
     error: filesError
-  } = usePolling<FileInfo[]>(() => fetchFiles(100), []);
+  } = usePolling<FileInfo[]>(() => fetchFiles(100), [], FILE_POLL_INTERVAL);
 
   const handleConnect = useCallback(
     async (host: string, port: number) => {
