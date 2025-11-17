@@ -1,4 +1,5 @@
 import { clsx } from "clsx";
+import { memo } from "react";
 import { Peer } from "../types";
 
 interface Props {
@@ -10,7 +11,7 @@ interface Props {
   error: string | null;
 }
 
-export function PeerList({
+export const PeerList = memo(function PeerList({
   peers,
   selectedPeer,
   onSelect,
@@ -65,5 +66,5 @@ export function PeerList({
       ) : null}
     </section>
   );
-}
+});
 

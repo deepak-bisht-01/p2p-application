@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   connectPeer,
   fetchMessages,
@@ -18,32 +18,56 @@ import { FileList } from "./components/FileList";
 import { MessageLogEntry, Peer, StatusSummary, FileInfo } from "./types";
 
 const POLL_INTERVAL = 5_000;
-const FILE_POLL_INTERVAL = 2_000; // Faster polling for file transfers
+const FILE_POLL_INTERVAL = 3_000; // Moderate polling for file transfers to reduce flickering
 
 function usePolling<T>(callback: () => Promise<T>, deps: unknown[] = [], interval: number = POLL_INTERVAL) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const dataRef = useRef<T | null>(null);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
+    if (!mountedRef.current) return;
+    
+    // Only show loading on first fetch
+    if (dataRef.current === null) {
+      setLoading(true);
+    }
+    
     try {
       const result = await callback();
-      setData(result);
+      if (!mountedRef.current) return;
+      
+      // Only update if data actually changed (deep comparison for primitive arrays)
+      const resultStr = JSON.stringify(result);
+      const currentStr = JSON.stringify(dataRef.current);
+      
+      if (resultStr !== currentStr) {
+        dataRef.current = result;
+        setData(result);
+      }
       setError(null);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, deps);
 
   useEffect(() => {
+    mountedRef.current = true;
     void fetchData();
     const timer = window.setInterval(() => {
       void fetchData();
     }, interval);
-    return () => window.clearInterval(timer);
+    return () => {
+      mountedRef.current = false;
+      window.clearInterval(timer);
+    };
   }, [fetchData, interval]);
 
   return { data, loading, refresh: fetchData, error };

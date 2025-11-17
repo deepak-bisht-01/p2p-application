@@ -1,11 +1,11 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, memo } from "react";
 
 interface Props {
   onConnect: (host: string, port: number) => Promise<void>;
   isBusy: boolean;
 }
 
-export function ConnectPeerForm({ onConnect, isBusy }: Props) {
+export const ConnectPeerForm = memo(function ConnectPeerForm({ onConnect, isBusy }: Props) {
   const [host, setHost] = useState("127.0.0.1");
   const [port, setPort] = useState(5001);
   const [error, setError] = useState<string | null>(null);
@@ -59,5 +59,5 @@ export function ConnectPeerForm({ onConnect, isBusy }: Props) {
       </form>
     </section>
   );
-}
+});
 

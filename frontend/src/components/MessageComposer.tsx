@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, memo } from "react";
 
 interface Props {
   onSend: (text: string, recipientId?: string) => Promise<void>;
@@ -6,7 +6,7 @@ interface Props {
   isBusy: boolean;
 }
 
-export function MessageComposer({ onSend, selectedPeer, isBusy }: Props) {
+export const MessageComposer = memo(function MessageComposer({ onSend, selectedPeer, isBusy }: Props) {
   const [text, setText] = useState("");
   const [broadcast, setBroadcast] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,5 +68,5 @@ export function MessageComposer({ onSend, selectedPeer, isBusy }: Props) {
       </form>
     </section>
   );
-}
+});
 

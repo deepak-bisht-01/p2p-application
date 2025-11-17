@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { MessageLogEntry } from "../types";
 
 interface Props {
@@ -14,7 +15,7 @@ function formatTimestamp(entry: MessageLogEntry): string {
   return new Date(timestamp).toLocaleTimeString();
 }
 
-export function MessagePanel({ messages, isLoading, error }: Props) {
+export const MessagePanel = memo(function MessagePanel({ messages, isLoading, error }: Props) {
   return (
     <section className="card card--messages">
       <header>
@@ -46,5 +47,5 @@ export function MessagePanel({ messages, isLoading, error }: Props) {
       </div>
     </section>
   );
-}
+});
 

@@ -20,6 +20,7 @@ class FileManager:
         
         self.files: Dict[str, Dict] = {}  # file_id -> file metadata
         self.file_chunks: Dict[str, Dict[int, bytes]] = {}  # file_id -> {chunk_index: chunk_data}
+        self.folders: Dict[str, Dict] = {}  # folder_id -> folder metadata
         self.lock = threading.RLock()
         
         # Load existing files metadata
@@ -51,7 +52,8 @@ class FileManager:
         return file_path.exists()
     
     def register_file(self, file_id: str, filename: str, file_size: int, 
-                       mime_type: str, sender_id: str, recipient_id: Optional[str] = None) -> bool:
+                       mime_type: str, sender_id: str, recipient_id: Optional[str] = None, 
+                       folder_path: Optional[str] = None) -> bool:
         """Register a new file transfer"""
         with self.lock:
             if file_id in self.files:
@@ -65,6 +67,7 @@ class FileManager:
                 "mime_type": mime_type,
                 "sender_id": sender_id,
                 "recipient_id": recipient_id,
+                "folder_path": folder_path,
                 "status": "receiving",
                 "chunks_received": 0,
                 "total_chunks": 0,
@@ -142,10 +145,18 @@ class FileManager:
                 return False
     
     def save_file(self, file_id: str, file_data: bytes, filename: str, 
-                  mime_type: str, sender_id: str, recipient_id: Optional[str] = None) -> bool:
+                  mime_type: str, sender_id: str, recipient_id: Optional[str] = None, 
+                  folder_path: Optional[str] = None) -> bool:
         """Save a complete file (for direct uploads)"""
         with self.lock:
-            file_path = self.storage_dir / file_id
+            # Handle folder structure
+            if folder_path:
+                full_dir = self.storage_dir / folder_path
+                full_dir.mkdir(parents=True, exist_ok=True)
+                file_path = full_dir / file_id
+            else:
+                file_path = self.storage_dir / file_id
+            
             try:
                 with open(file_path, 'wb') as f:
                     f.write(file_data)
@@ -157,6 +168,7 @@ class FileManager:
                     "mime_type": mime_type,
                     "sender_id": sender_id,
                     "recipient_id": recipient_id,
+                    "folder_path": folder_path,
                     "status": "completed",
                     "file_path": str(file_path),
                     "created_at": datetime.utcnow().isoformat(),
@@ -183,6 +195,30 @@ class FileManager:
                     return f.read()
             except Exception as e:
                 logger.error(f"Failed to read file {file_id}: {e}")
+                return None
+    
+    def get_partial_file(self, file_id: str) -> Optional[bytes]:
+        """Get partial file data (for in-progress transfers)"""
+        with self.lock:
+            if file_id not in self.files:
+                return None
+            
+            # If file is completed, return full file
+            if self.files[file_id].get("status") == "completed":
+                return self.get_file(file_id)
+            
+            # Return assembled chunks so far
+            chunks = self.file_chunks.get(file_id, {})
+            if not chunks:
+                return None
+            
+            try:
+                # Assemble available chunks in order
+                sorted_indices = sorted(chunks.keys())
+                partial_data = b''.join([chunks[i] for i in sorted_indices])
+                return partial_data
+            except Exception as e:
+                logger.error(f"Failed to assemble partial file {file_id}: {e}")
                 return None
     
     def get_file_info(self, file_id: str) -> Optional[Dict]:

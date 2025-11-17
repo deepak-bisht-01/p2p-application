@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { StatusSummary } from "../types";
 
 interface Props {
@@ -6,7 +7,7 @@ interface Props {
   error: string | null;
 }
 
-export function StatusSummaryCard({ status, isLoading, error }: Props) {
+export const StatusSummaryCard = memo(function StatusSummaryCard({ status, isLoading, error }: Props) {
   return (
     <section className="card card--status">
       <h2>Network Status</h2>
@@ -46,5 +47,5 @@ export function StatusSummaryCard({ status, isLoading, error }: Props) {
       )}
     </section>
   );
-}
+});
 

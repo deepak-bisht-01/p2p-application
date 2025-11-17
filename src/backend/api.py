@@ -4,6 +4,8 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import mimetypes
+import os
+from pathlib import Path
 
 from src.backend.service import p2p_service
 from src.backend.file_manager import FileManager
@@ -77,7 +79,7 @@ def list_messages(limit: int = 100):
 
 
 @app.post("/api/files/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), folder_path: str = Form(None)):
     """Upload a file to the local storage"""
     try:
         file_data = await file.read()
@@ -88,7 +90,7 @@ async def upload_file(file: UploadFile = File(...)):
         file_id = FileManager.generate_file_id(filename, p2p_service.identity.peer_id)
         success = p2p_service.file_manager.save_file(
             file_id, file_data, filename, mime_type, 
-            p2p_service.identity.peer_id, None
+            p2p_service.identity.peer_id, None, folder_path
         )
         
         if not success:
@@ -205,25 +207,47 @@ def get_file_info(file_id: str):
 
 @app.get("/api/files/{file_id}/preview")
 def preview_file(file_id: str):
-    """Preview a file (for images, text files, etc.)"""
+    """Preview a file (for images, text files, videos, etc.)"""
     file_info = p2p_service.get_file_info(file_id)
     if not file_info:
         raise HTTPException(status_code=404, detail="File not found")
     
-    # Check if file is completed
+    # Allow preview even during transfer for partial content
+    mime_type = file_info.get("mime_type", "application/octet-stream")
+    filename = file_info.get("filename", "file")
+    
+    # For images and videos, return inline preview
+    if mime_type.startswith("image/") or mime_type.startswith("video/"):
+        # Check if file is being transferred
+        if file_info.get("status") == "receiving":
+            # Return partial content if available
+            file_data = p2p_service.file_manager.get_partial_file(file_id)
+            if file_data:
+                return Response(
+                    content=file_data, 
+                    media_type=mime_type,
+                    headers={
+                        "Content-Disposition": f'inline; filename="{filename}"',
+                        "X-Transfer-Status": "receiving"
+                    }
+                )
+        elif file_info.get("status") == "completed":
+            file_data = p2p_service.get_file(file_id)
+            if not file_data:
+                raise HTTPException(status_code=404, detail="File data not found")
+            return Response(
+                content=file_data, 
+                media_type=mime_type,
+                headers={"Content-Disposition": f'inline; filename="{filename}"'}
+            )
+    
+    # For completed files only
     if file_info.get("status") != "completed":
         raise HTTPException(status_code=400, detail=f"File transfer is {file_info.get('status', 'incomplete')}")
     
     file_data = p2p_service.get_file(file_id)
     if not file_data:
         raise HTTPException(status_code=404, detail="File data not found")
-    
-    mime_type = file_info.get("mime_type", "application/octet-stream")
-    filename = file_info.get("filename", "file")
-    
-    # For images, return as image
-    if mime_type.startswith("image/"):
-        return Response(content=file_data, media_type=mime_type)
     
     # For text files, return as text
     if mime_type.startswith("text/"):

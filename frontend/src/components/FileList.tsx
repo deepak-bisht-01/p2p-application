@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { FileInfo } from "../types";
 import { getFileDownloadUrl, getFilePreviewUrl } from "../api";
 
@@ -9,8 +9,9 @@ interface Props {
   onRefresh?: () => void;
 }
 
-export function FileList({ files, isLoading, error, onRefresh }: Props) {
+export const FileList = memo(function FileList({ files, isLoading, error, onRefresh }: Props) {
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+  const [videoBuffering, setVideoBuffering] = useState<{[key: string]: boolean}>({});
 
   function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -30,6 +31,7 @@ export function FileList({ files, isLoading, error, onRefresh }: Props) {
     return (
       mimeType.startsWith("image/") ||
       mimeType.startsWith("text/") ||
+      mimeType.startsWith("video/") ||
       mimeType === "application/json"
     );
   }
@@ -144,7 +146,7 @@ export function FileList({ files, isLoading, error, onRefresh }: Props) {
                     {renderProgressBar(file)}
                   </div>
                   <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
-                    {isPreviewable(file.mime_type) && file.status === "completed" && (
+                    {isPreviewable(file.mime_type) && (file.status === "completed" || (file.status === "receiving" && file.mime_type.startsWith("video/"))) && (
                       <button
                         className="btn btn--ghost"
                         type="button"
@@ -166,22 +168,68 @@ export function FileList({ files, isLoading, error, onRefresh }: Props) {
                     )}
                   </div>
                 </div>
-                {previewFileId === file.file_id && file.status === "completed" && (
+                {previewFileId === file.file_id && (file.status === "completed" || file.status === "receiving") && (
                   <div
                     style={{
                       marginTop: "1rem",
                       padding: "1rem",
                       backgroundColor: "#f5f5f5",
                       borderRadius: "4px",
-                      border: "1px solid #ddd"
+                      border: "1px solid #ddd",
+                      position: "relative"
                     }}
                   >
+                    {file.status === "receiving" && (
+                      <div style={{
+                        position: "absolute",
+                        top: "0.5rem",
+                        right: "0.5rem",
+                        backgroundColor: "#2196f3",
+                        color: "white",
+                        padding: "0.25rem 0.75rem",
+                        borderRadius: "12px",
+                        fontSize: "0.75rem",
+                        fontWeight: "600"
+                      }}>
+                        Transfer in progress...
+                      </div>
+                    )}
                     {file.mime_type.startsWith("image/") ? (
                       <img
                         src={getFilePreviewUrl(file.file_id)}
                         alt={file.filename}
                         style={{ maxWidth: "100%", maxHeight: "400px", display: "block", margin: "0 auto" }}
                       />
+                    ) : file.mime_type.startsWith("video/") ? (
+                      <div style={{ position: "relative" }}>
+                        {videoBuffering[file.file_id] && (
+                          <div style={{
+                            position: "absolute",
+                            top: "50%",
+                            left: "50%",
+                            transform: "translate(-50%, -50%)",
+                            backgroundColor: "rgba(0,0,0,0.7)",
+                            color: "white",
+                            padding: "1rem 2rem",
+                            borderRadius: "8px",
+                            fontSize: "1rem",
+                            fontWeight: "600",
+                            zIndex: 10
+                          }}>
+                            Buffering...
+                          </div>
+                        )}
+                        <video
+                          controls
+                          style={{ maxWidth: "100%", maxHeight: "400px", display: "block", margin: "0 auto" }}
+                          onWaiting={() => setVideoBuffering(prev => ({ ...prev, [file.file_id]: true }))}
+                          onCanPlay={() => setVideoBuffering(prev => ({ ...prev, [file.file_id]: false }))}
+                          onPlaying={() => setVideoBuffering(prev => ({ ...prev, [file.file_id]: false }))}
+                        >
+                          <source src={getFilePreviewUrl(file.file_id)} type={file.mime_type} />
+                          Your browser does not support the video tag.
+                        </video>
+                      </div>
                     ) : file.mime_type.startsWith("text/") || file.mime_type === "application/json" ? (
                       <iframe
                         src={getFilePreviewUrl(file.file_id)}
@@ -203,5 +251,5 @@ export function FileList({ files, isLoading, error, onRefresh }: Props) {
       </div>
     </section>
   );
-}
+});
 
