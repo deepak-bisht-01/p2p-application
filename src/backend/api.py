@@ -32,8 +32,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
@@ -203,6 +204,33 @@ def get_file_info(file_id: str):
     if not file_info:
         raise HTTPException(status_code=404, detail="File not found")
     return file_info
+
+
+@app.delete("/api/files/{file_id}")
+def delete_file(file_id: str):
+    """Delete a file"""
+    import logging
+    logger = logging.getLogger("api")
+    logger.info(f"DELETE request received for file_id: {file_id}")
+    
+    file_info = p2p_service.get_file_info(file_id)
+    if not file_info:
+        logger.warning(f"File not found: {file_id}")
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    success = p2p_service.file_manager.delete_file(file_id)
+    if not success:
+        logger.error(f"Failed to delete file: {file_id}")
+        raise HTTPException(status_code=500, detail="Failed to delete file")
+    
+    logger.info(f"Successfully deleted file: {file_id}")
+    return {"status": "deleted", "file_id": file_id}
+
+
+@app.options("/api/files/{file_id}")
+def options_file(file_id: str):
+    """Handle OPTIONS request for CORS preflight"""
+    return {"status": "ok"}
 
 
 @app.get("/api/files/{file_id}/preview")
