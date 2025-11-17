@@ -1,6 +1,6 @@
 import { useState, memo } from "react";
 import { FileInfo } from "../types";
-import { getFileDownloadUrl, getFilePreviewUrl } from "../api";
+import { getFileDownloadUrl, getFilePreviewUrl, deleteFile } from "../api";
 
 interface Props {
   files: FileInfo[];
@@ -12,6 +12,25 @@ interface Props {
 export const FileList = memo(function FileList({ files, isLoading, error, onRefresh }: Props) {
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [videoBuffering, setVideoBuffering] = useState<{[key: string]: boolean}>({});
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+
+  async function handleDelete(fileId: string, filename: string) {
+    if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+      return;
+    }
+
+    setDeletingFileId(fileId);
+    try {
+      await deleteFile(fileId);
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (err) {
+      alert(`Failed to delete file: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setDeletingFileId(null);
+    }
+  }
 
   function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -145,8 +164,7 @@ export const FileList = memo(function FileList({ files, isLoading, error, onRefr
                     </div>
                     {renderProgressBar(file)}
                   </div>
-                  <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
-                    {isPreviewable(file.mime_type) && (file.status === "completed" || (file.status === "receiving" && file.mime_type.startsWith("video/"))) && (
+                  <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>                    {isPreviewable(file.mime_type) && (file.status === "completed" || (file.status === "receiving" && file.mime_type.startsWith("video/"))) && (
                       <button
                         className="btn btn--ghost"
                         type="button"
@@ -166,6 +184,19 @@ export const FileList = memo(function FileList({ files, isLoading, error, onRefr
                         Download
                       </a>
                     )}
+                    <button
+                      className="btn btn--ghost"
+                      type="button"
+                      onClick={() => handleDelete(file.file_id, file.filename)}
+                      disabled={deletingFileId === file.file_id}
+                      style={{ 
+                        fontSize: "0.85rem", 
+                        color: "#f44336",
+                        opacity: deletingFileId === file.file_id ? 0.5 : 1
+                      }}
+                    >
+                      {deletingFileId === file.file_id ? "Deleting..." : "Delete"}
+                    </button>
                   </div>
                 </div>
                 {previewFileId === file.file_id && (file.status === "completed" || file.status === "receiving") && (

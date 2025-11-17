@@ -101,3 +101,10 @@ export async function getFileInfo(fileId: string): Promise<FileInfo> {
   return handleResponse<FileInfo>(response);
 }
 
+export async function deleteFile(fileId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/files/${fileId}`, {
+    method: "DELETE"
+  });
+  await handleResponse(response);
+}
+
