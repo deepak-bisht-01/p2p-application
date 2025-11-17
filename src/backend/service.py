@@ -211,6 +211,8 @@ class P2PService:
             logger.warning("Invalid file transfer request: missing file_id or filename")
             return
         
+        logger.info(f"Received file transfer request: {filename} ({file_size} bytes) from {sender_id} (ID: {file_id})")
+        
         # Check if this message is for us (either direct or broadcast)
         if recipient_id is not None and recipient_id != self.identity.peer_id:
             logger.debug(f"Ignoring file transfer request for {recipient_id}")
@@ -245,7 +247,7 @@ class P2PService:
             chunk_data = base64.b64decode(chunk_data_b64)
             success = self.file_manager.add_chunk(file_id, chunk_index, chunk_data, is_last)
             if success:
-                logger.debug(f"Received chunk {chunk_index} for file {file_id} (is_last={is_last})")
+                logger.debug(f"Received chunk {chunk_index} for file {file_id} (is_last={is_last}, size={len(chunk_data)} bytes)")
             else:
                 logger.warning(f"Failed to add chunk {chunk_index} for file {file_id}")
         except Exception as e:
@@ -259,6 +261,8 @@ class P2PService:
         
         if not file_id:
             return
+        
+        logger.info(f"Received file transfer complete notification for {file_id}")
         
         # Check if this message is for us (either direct or broadcast)
         if recipient_id is not None and recipient_id != self.identity.peer_id:
@@ -412,6 +416,7 @@ class P2PService:
         
         # Generate file ID
         file_id = FileManager.generate_file_id(filename, self.identity.peer_id)
+        logger.info(f"Sending file {filename} ({len(file_data)} bytes) to peer {recipient_id} (ID: {file_id})")
         
         # Send file transfer request
         request = MessageProtocol.create_file_transfer_request(
@@ -430,6 +435,7 @@ class P2PService:
         # Split file into chunks (32KB chunks to avoid message size issues)
         chunk_size = 32 * 1024
         total_chunks = (len(file_data) + chunk_size - 1) // chunk_size
+        logger.info(f"Splitting file {filename} into {total_chunks} chunks of {chunk_size} bytes each")
         
         try:
             for i in range(total_chunks):
@@ -462,12 +468,14 @@ class P2PService:
                 recipient_id,
                 file_id
             )
-            self.connection_manager.send_message(recipient_id, complete_msg)
+            if not self.connection_manager.send_message(recipient_id, complete_msg):
+                logger.error(f"Failed to send completion message to {recipient_id}")
+                return False
             
             logger.info(f"File {filename} ({total_chunks} chunks) sent to {recipient_id}")
             return True
         except Exception as e:
-            logger.error(f"Error sending file: {e}", exc_info=True)
+            logger.error(f"Error sending file {filename}: {e}", exc_info=True)
             return False
     
     def broadcast_file(self, file_data: bytes, filename: str, 
@@ -478,6 +486,7 @@ class P2PService:
         
         # Generate file ID
         file_id = FileManager.generate_file_id(filename, self.identity.peer_id)
+        logger.info(f"Broadcasting file {filename} ({len(file_data)} bytes) (ID: {file_id})")
         
         # Get all connected peers
         connected_peers = self.connection_manager.get_active_connections()
@@ -490,6 +499,8 @@ class P2PService:
         if not connected_peers:
             logger.warning("No other peers to broadcast file to (only self connected)")
             return False
+        
+        logger.info(f"Broadcasting to {len(connected_peers)} peers: {connected_peers}")
         
         # Send file transfer request to all peers
         request = MessageProtocol.create_file_transfer_request(
@@ -507,6 +518,7 @@ class P2PService:
         # Split file into chunks (32KB chunks to avoid message size issues)
         chunk_size = 32 * 1024
         total_chunks = (len(file_data) + chunk_size - 1) // chunk_size
+        logger.info(f"Splitting file {filename} into {total_chunks} chunks of {chunk_size} bytes each")
         
         try:
             for i in range(total_chunks):
@@ -543,7 +555,7 @@ class P2PService:
             logger.info(f"File {filename} ({total_chunks} chunks) broadcasted to {len(connected_peers)} peers")
             return True
         except Exception as e:
-            logger.error(f"Error broadcasting file: {e}", exc_info=True)
+            logger.error(f"Error broadcasting file {filename}: {e}", exc_info=True)
             return False
     
     def list_files(self, limit: int = 100) -> List[Dict]:

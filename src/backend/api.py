@@ -138,28 +138,55 @@ async def send_file(request: FileSendRequest):
 async def send_file_direct(
     recipient_id: str = Form(None),
     broadcast: str = Form("false"),
+    folder_path: str = Form(None),
     file: UploadFile = File(...)
 ):
     """Upload and send a file directly to a peer or broadcast to all peers"""
+    # Log file info for debugging
+    import logging
+    logger = logging.getLogger("api")
+    
     try:
         file_data = await file.read()
         filename = file.filename or "unnamed"
         mime_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
         
+        logger.info(f"Received file: {filename}, size: {len(file_data)} bytes, mime_type: {mime_type}")
+        
         is_broadcast = broadcast.lower() == "true"
         
+        # Save file locally first with folder path if provided
+        file_id = FileManager.generate_file_id(filename, p2p_service.identity.peer_id)
+        success = p2p_service.file_manager.save_file(
+            file_id, file_data, filename, mime_type, 
+            p2p_service.identity.peer_id, None, folder_path
+        )
+        
+        if not success:
+            logger.error(f"Failed to save file locally: {filename}")
+            raise HTTPException(status_code=500, detail="Failed to save file locally")
+        
+        logger.info(f"File saved locally: {filename} (ID: {file_id})")
+        
         if is_broadcast:
+            logger.info(f"Broadcasting file: {filename}")
             success = p2p_service.broadcast_file(file_data, filename, mime_type)
         else:
             if not recipient_id:
+                logger.error("recipient_id is required when not broadcasting")
                 raise HTTPException(status_code=400, detail="recipient_id is required when not broadcasting")
+            logger.info(f"Sending file to peer {recipient_id}: {filename}")
             success = p2p_service.send_file(recipient_id, file_data, filename, mime_type)
         
         if not success:
+            logger.error(f"Failed to send file: {filename}")
             raise HTTPException(status_code=400, detail="Failed to send file")
         
-        return {"status": "sent", "filename": filename, "broadcast": is_broadcast}
+        logger.info(f"File sent successfully: {filename}")
+        return {"status": "sent", "filename": filename, "broadcast": is_broadcast, "file_id": file_id}
     except Exception as e:
+        import traceback
+        logger.error(f"Error in send_file_direct: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

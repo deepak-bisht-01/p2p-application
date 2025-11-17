@@ -90,21 +90,27 @@ class ConnectionManager:
                 try:
                     with conn.lock:
                         conn.socket.sendall(message + b'\n')
+                    self.logger.debug(f"Sent message to {peer_id} ({len(message)} bytes)")
                     return True
                 except Exception as e:
                     self.logger.error(f"Failed to send message to {peer_id}: {e}")
                     self.remove_connection(peer_id)
+            else:
+                self.logger.warning(f"Cannot send message to {peer_id}: peer not connected")
         return False
     
     def broadcast_message(self, message: bytes, exclude_peer: Optional[str] = None):
         """Broadcast message to all connected peers"""
         with self.lock:
             peer_count = 0
+            excluded_count = 0
             for peer_id, conn in list(self.connections.items()):
                 if peer_id != exclude_peer:
                     if self.send_message(peer_id, message):
                         peer_count += 1
-            self.logger.debug(f"Broadcasted message to {peer_count} peers")
+                else:
+                    excluded_count += 1
+            self.logger.debug(f"Broadcasted message to {peer_count} peers (excluded {excluded_count} peers)")
     
     def remove_connection(self, peer_id: str):
         """Remove a connection"""

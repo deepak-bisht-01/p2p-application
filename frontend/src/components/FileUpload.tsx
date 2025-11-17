@@ -1,4 +1,4 @@
-import { FormEvent, useState, useRef, memo, useCallback } from "react";
+import { FormEvent, useState, useRef, memo, useCallback, useEffect } from "react";
 import { sendFile } from "../api";
 
 interface Props {
@@ -46,9 +46,10 @@ export const FileUpload = memo(function FileUpload({ selectedPeer, isBusy, onFil
           const fileItem = files[i];
           // Extract relative path from webkitRelativePath
           const relativePath = (fileItem as any).webkitRelativePath || fileItem.name;
-          const folderPath = relativePath.substring(0, relativePath.lastIndexOf('/'));
+          const folderPath = relativePath.includes('/') ? 
+            relativePath.substring(0, relativePath.lastIndexOf('/')) : '';
           
-          await sendFile(selectedPeer || undefined, fileItem, broadcast);
+          await sendFile(selectedPeer || undefined, fileItem, broadcast, folderPath);
         }
       } else if (file) {
         await sendFile(selectedPeer || undefined, file, broadcast);
@@ -66,6 +67,7 @@ export const FileUpload = memo(function FileUpload({ selectedPeer, isBusy, onFil
         onFileSent();
       }
     } catch (err) {
+      console.error("File send error:", err);
       setError((err as Error).message || "Failed to send file");
     } finally {
       setIsSending(false);
@@ -80,16 +82,26 @@ export const FileUpload = memo(function FileUpload({ selectedPeer, isBusy, onFil
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const selectedFile = event.target.files?.[0] || null;
+    console.log("File selected:", selectedFile);
     setFile(selectedFile);
     setFiles(null);
     setIsFolder(false);
+    // Clear any previous errors
+    if (selectedFile) {
+      setError(null);
+    }
   }
 
   function handleFolderChange(event: React.ChangeEvent<HTMLInputElement>) {
     const selectedFiles = event.target.files;
+    console.log("Folder selected with files:", selectedFiles);
     setFiles(selectedFiles);
     setFile(null);
     setIsFolder(true);
+    // Clear any previous errors
+    if (selectedFiles && selectedFiles.length > 0) {
+      setError(null);
+    }
   }
   
   // Set webkitdirectory attribute using ref
@@ -97,10 +109,10 @@ export const FileUpload = memo(function FileUpload({ selectedPeer, isBusy, onFil
     if (element) {
       element.setAttribute('webkitdirectory', '');
       element.setAttribute('directory', '');
+      element.setAttribute('multiple', '');
     }
-    if (folderInputRef.current !== element) {
-      (folderInputRef as any).current = element;
-    }
+    // Assign to current using a type assertion to bypass readonly check
+    (folderInputRef as React.MutableRefObject<HTMLInputElement | null>).current = element;
   }, []);
 
   return (

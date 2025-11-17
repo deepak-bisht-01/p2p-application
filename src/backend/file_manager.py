@@ -92,6 +92,8 @@ class FileManager:
             self.file_chunks[file_id][chunk_index] = chunk_data
             self.files[file_id]["chunks_received"] = len(self.file_chunks[file_id])
             
+            logger.debug(f"Added chunk {chunk_index} for file {file_id} (size: {len(chunk_data)} bytes, is_last: {is_last})")
+            
             if is_last:
                 self.files[file_id]["total_chunks"] = chunk_index + 1
                 logger.info(f"Received final chunk {chunk_index} for {file_id}, total chunks: {chunk_index + 1}")
@@ -118,6 +120,9 @@ class FileManager:
                 logger.warning(f"File {file_id} incomplete: {len(chunks)}/{total_chunks} chunks received")
                 logger.debug(f"Missing chunks: {set(range(total_chunks)) - set(chunks.keys())}")
                 return False
+            
+            filename = file_info.get("filename", "unknown")
+            logger.info(f"Assembling file {filename} ({file_id}) from {total_chunks} chunks")
             
             # Reassemble file
             file_path = self.storage_dir / file_id
@@ -149,15 +154,17 @@ class FileManager:
                   folder_path: Optional[str] = None) -> bool:
         """Save a complete file (for direct uploads)"""
         with self.lock:
-            # Handle folder structure
-            if folder_path:
-                full_dir = self.storage_dir / folder_path
-                full_dir.mkdir(parents=True, exist_ok=True)
-                file_path = full_dir / file_id
-            else:
-                file_path = self.storage_dir / file_id
-            
             try:
+                # Handle folder structure
+                if folder_path:
+                    full_dir = self.storage_dir / folder_path
+                    full_dir.mkdir(parents=True, exist_ok=True)
+                    file_path = full_dir / file_id
+                    logger.info(f"Saving file in folder: {folder_path}/{filename} (ID: {file_id})")
+                else:
+                    file_path = self.storage_dir / file_id
+                    logger.info(f"Saving file: {filename} (ID: {file_id})")
+                
                 with open(file_path, 'wb') as f:
                     f.write(file_data)
                 
@@ -175,9 +182,10 @@ class FileManager:
                     "completed_at": datetime.utcnow().isoformat()
                 }
                 self._save_metadata()
+                logger.info(f"File saved successfully: {filename} ({len(file_data)} bytes)")
                 return True
             except Exception as e:
-                logger.error(f"Failed to save file {file_id}: {e}")
+                logger.error(f"Failed to save file {filename} (ID: {file_id}): {e}", exc_info=True)
                 return False
     
     def get_file(self, file_id: str) -> Optional[bytes]:

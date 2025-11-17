@@ -64,7 +64,9 @@ export async function uploadFile(file: File): Promise<{ file_id: string; file_in
   return handleResponse<{ file_id: string; file_info: FileInfo }>(response);
 }
 
-export async function sendFile(recipientId: string | undefined, file: File, broadcast: boolean = false): Promise<void> {
+export async function sendFile(recipientId: string | undefined, file: File, broadcast: boolean = false, folderPath?: string): Promise<void> {
+  console.log("Sending file:", { fileName: file.name, fileSize: file.size, recipientId, broadcast, folderPath });
+  
   const formData = new FormData();
   formData.append("file", file);
   if (recipientId && !broadcast) {
@@ -72,10 +74,22 @@ export async function sendFile(recipientId: string | undefined, file: File, broa
   }
   formData.append("broadcast", broadcast.toString());
   
+  // Add folder path if provided
+  if (folderPath) {
+    formData.append("folder_path", folderPath);
+  }
+  
   const response = await fetch(`${API_BASE}/api/files/send-direct`, {
     method: "POST",
     body: formData
   });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("API Error:", errorText);
+    throw new Error(`API Error: ${errorText}`);
+  }
+  
   await handleResponse(response);
 }
 
