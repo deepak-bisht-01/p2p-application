@@ -174,6 +174,10 @@ def download_file(file_id: str):
     if not file_info:
         raise HTTPException(status_code=404, detail="File not found")
     
+    # Check if file is completed
+    if file_info.get("status") != "completed":
+        raise HTTPException(status_code=400, detail=f"File transfer is {file_info.get('status', 'incomplete')}")
+    
     file_data = p2p_service.get_file(file_id)
     if not file_data:
         raise HTTPException(status_code=404, detail="File data not found")
@@ -205,6 +209,10 @@ def preview_file(file_id: str):
     file_info = p2p_service.get_file_info(file_id)
     if not file_info:
         raise HTTPException(status_code=404, detail="File not found")
+    
+    # Check if file is completed
+    if file_info.get("status") != "completed":
+        raise HTTPException(status_code=400, detail=f"File transfer is {file_info.get('status', 'incomplete')}")
     
     file_data = p2p_service.get_file(file_id)
     if not file_data:

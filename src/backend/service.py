@@ -213,8 +213,11 @@ class P2PService:
         
         try:
             chunk_data = base64.b64decode(chunk_data_b64)
-            self.file_manager.add_chunk(file_id, chunk_index, chunk_data, is_last)
-            logger.debug(f"Received chunk {chunk_index} for file {file_id}")
+            success = self.file_manager.add_chunk(file_id, chunk_index, chunk_data, is_last)
+            if success:
+                logger.debug(f"Received chunk {chunk_index} for file {file_id} (is_last={is_last})")
+            else:
+                logger.warning(f"Failed to add chunk {chunk_index} for file {file_id}")
         except Exception as e:
             logger.error(f"Failed to process file chunk {chunk_index} for {file_id}: {e}")
     
