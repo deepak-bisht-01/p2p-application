@@ -18,7 +18,7 @@ import { FileList } from "./components/FileList";
 import { MessageLogEntry, Peer, StatusSummary, FileInfo } from "./types";
 
 const POLL_INTERVAL = 5_000;
-const FILE_POLL_INTERVAL = 3_000; // Moderate polling for file transfers to reduce flickering
+const FILE_POLL_INTERVAL = 2_000; // Fast polling for file transfers to show download button promptly
 
 function usePolling<T>(callback: () => Promise<T>, deps: unknown[] = [], interval: number = POLL_INTERVAL) {
   const [data, setData] = useState<T | null>(null);

@@ -2,6 +2,13 @@
 
 A peer-to-peer messaging and file sharing application with a modern React frontend and Python backend.
 
+## Quick Links
+
+- 📘 [Quick Start Guide](QUICK_START.md) - Get started in 5 minutes
+- 🚀 [Deployment Guide](DEPLOYMENT.md) - Production deployment instructions
+- 🔧 [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+- 📋 [Setup for Two Devices](SETUP_TWO_DEVICES.md) - Multi-device file sharing
+
 ## Features
 
 - **P2P Networking**: Direct peer-to-peer connections for messaging
