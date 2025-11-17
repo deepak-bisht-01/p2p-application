@@ -1,1 +1,17 @@
-{}
+{
+  "b3cc102050fc70dd": {
+    "file_id": "b3cc102050fc70dd",
+    "filename": "Screenshot 2025-08-03 223934.png",
+    "file_size": 32713,
+    "mime_type": "image/png",
+    "sender_id": "18a8b775-ece4-463d-b2a6-25b18c5f11c7-d2ed1687af7cb5b1",
+    "recipient_id": null,
+    "folder_path": null,
+    "status": "completed",
+    "chunks_received": 1,
+    "total_chunks": 1,
+    "created_at": "2025-11-17T10:35:26.825375",
+    "completed_at": "2025-11-17T10:35:26.830790",
+    "file_path": "files\\b3cc102050fc70dd"
+  }
+}
