@@ -6,6 +6,7 @@ import logging
 import logging.config
 import os
 import yaml
+import json
 
 from src.core.peer_node import PeerNode
 from src.core.connection_manager import ConnectionManager
@@ -103,9 +104,14 @@ class P2PService:
     # ------------------------------------------------------------------
     def _handle_incoming_message(self, peer_id: str, raw_message: str):
         try:
+            if not raw_message or not raw_message.strip():
+                logger.debug(f"Ignoring empty message from {peer_id}")
+                return
+                
             message_dict = MessageProtocol.decode_message(raw_message.encode())
             if not message_dict:
-                logger.warning("Received message with invalid format")
+                logger.warning(f"Received message with invalid format from {peer_id}")
+                logger.debug(f"Invalid message content (first 100 chars): {raw_message[:100]}")
                 return
 
             is_valid, error = self.validator.validate_message(message_dict)
@@ -130,14 +136,19 @@ class P2PService:
                 self._handle_file_transfer_complete(message_dict)
             elif msg_type == MessageType.FILE_TRANSFER_ACK.value:
                 self._handle_file_transfer_ack(message_dict)
+            else:
+                logger.warning(f"Unknown message type: {msg_type} from {peer_id}")
 
             self._record_message({
                 "direction": "incoming",
                 "payload": message_dict,
                 "received_at": datetime.utcnow().isoformat()
             })
+        except json.JSONDecodeError as json_error:
+            logger.error(f"JSON decode error from {peer_id}: {json_error}")
+            logger.debug(f"Failed message (first 200 chars): {raw_message[:200]}")
         except Exception as exc:
-            logger.error("Error handling incoming message: %s", exc, exc_info=True)
+            logger.error("Error handling incoming message from %s: %s", peer_id, exc, exc_info=True)
 
     def _handle_handshake(self, message: Dict):
         sender_id = message["sender_id"]

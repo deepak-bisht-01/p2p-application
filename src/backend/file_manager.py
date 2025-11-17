@@ -55,6 +55,7 @@ class FileManager:
         """Register a new file transfer"""
         with self.lock:
             if file_id in self.files:
+                logger.warning(f"File {file_id} already registered, updating...")
                 return False
             
             self.files[file_id] = {
@@ -72,20 +73,25 @@ class FileManager:
             }
             self.file_chunks[file_id] = {}
             self._save_metadata()
+            logger.info(f"Registered file transfer: {filename} ({file_id}), size: {file_size} bytes")
             return True
     
     def add_chunk(self, file_id: str, chunk_index: int, chunk_data: bytes, is_last: bool) -> bool:
         """Add a chunk to a file transfer"""
         with self.lock:
             if file_id not in self.files:
+                logger.error(f"Cannot add chunk: file {file_id} not registered")
                 return False
+            
+            if file_id not in self.file_chunks:
+                self.file_chunks[file_id] = {}
             
             self.file_chunks[file_id][chunk_index] = chunk_data
             self.files[file_id]["chunks_received"] = len(self.file_chunks[file_id])
             
             if is_last:
                 self.files[file_id]["total_chunks"] = chunk_index + 1
-                self.files[file_id]["status"] = "receiving"
+                logger.info(f"Received final chunk {chunk_index} for {file_id}, total chunks: {chunk_index + 1}")
             
             return True
     
@@ -93,6 +99,7 @@ class FileManager:
         """Complete file transfer and save to disk"""
         with self.lock:
             if file_id not in self.files:
+                logger.error(f"Cannot complete file: {file_id} not registered")
                 return False
             
             file_info = self.files[file_id]
@@ -100,8 +107,13 @@ class FileManager:
             
             # Check if all chunks are received
             total_chunks = file_info.get("total_chunks", 0)
-            if total_chunks == 0 or len(chunks) < total_chunks:
-                logger.warning(f"File {file_id} incomplete: {len(chunks)}/{total_chunks} chunks")
+            if total_chunks == 0:
+                logger.warning(f"File {file_id} has no total_chunks set")
+                return False
+                
+            if len(chunks) < total_chunks:
+                logger.warning(f"File {file_id} incomplete: {len(chunks)}/{total_chunks} chunks received")
+                logger.debug(f"Missing chunks: {set(range(total_chunks)) - set(chunks.keys())}")
                 return False
             
             # Reassemble file
@@ -123,10 +135,10 @@ class FileManager:
                 del self.file_chunks[file_id]
                 
                 self._save_metadata()
-                logger.info(f"File {file_id} ({file_info['filename']}) completed")
+                logger.info(f"File {file_id} ({file_info['filename']}) completed successfully - {total_chunks} chunks assembled")
                 return True
             except Exception as e:
-                logger.error(f"Failed to save file {file_id}: {e}")
+                logger.error(f"Failed to save file {file_id}: {e}", exc_info=True)
                 return False
     
     def save_file(self, file_id: str, file_data: bytes, filename: str, 

@@ -53,8 +53,10 @@ class ConnectionManager:
         
         while conn.is_active:
             try:
-                data = conn.socket.recv(4096)
+                # Increase buffer size for large file chunks
+                data = conn.socket.recv(65536)  # 64KB buffer
                 if not data:
+                    self.logger.info(f"Connection closed by peer {conn.peer_id}")
                     break
                 
                 buffer += data
@@ -62,11 +64,18 @@ class ConnectionManager:
                 # Try to extract complete messages
                 while b'\n' in buffer:
                     line, buffer = buffer.split(b'\n', 1)
-                    if self.message_handler and conn.peer_id:
-                        self.message_handler(conn.peer_id, line.decode('utf-8'))
+                    if line:  # Skip empty lines
+                        if self.message_handler and conn.peer_id:
+                            try:
+                                self.message_handler(conn.peer_id, line.decode('utf-8'))
+                            except Exception as msg_error:
+                                self.logger.error(f"Error processing message from {conn.peer_id}: {msg_error}")
                         
+            except ConnectionResetError:
+                self.logger.warning(f"Connection reset by peer {conn.peer_id}")
+                break
             except Exception as e:
-                self.logger.error(f"Error handling connection {conn.peer_id}: {e}")
+                self.logger.error(f"Error handling connection {conn.peer_id}: {e}", exc_info=True)
                 break
         
         # Clean up connection
