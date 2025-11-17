@@ -1,7 +1,8 @@
 import { MessageLogEntry, Peer, StatusSummary, FileInfo } from "./types";
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:8000";
+// Use relative path for API calls to leverage Vite proxy
+// In production, set VITE_API_BASE_URL environment variable
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || "";
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
